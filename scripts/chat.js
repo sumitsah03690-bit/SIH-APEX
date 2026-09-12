@@ -218,6 +218,25 @@ const MODES = {
 
 /* weatherData dictionary removed — all data comes from backend API only */
 
+/**
+ * Maps WMO weather interpretation codes to human-readable text and emojis.
+ * Used by the header weather chip to display current conditions.
+ * @param {number} code - WMO weather code (0 to 99)
+ * @returns {{desc: string, icon: string}}
+ */
+function getWmoWeatherInfo(code) {
+  if (code === 0) return { desc:'Clear Sky', icon:'☀️' };
+  if (code === 1 || code === 2) return { desc:'Mainly Clear · Passing Clouds', icon:'🌤' };
+  if (code === 3) return { desc:'Overcast · Cloud Blanket', icon:'☁️' };
+  if (code === 45 || code === 48) return { desc:'Fog · Low Visibility', icon:'🌫️' };
+  if (code >= 51 && code <= 55) return { desc:'Light Drizzle', icon:'🌦️' };
+  if (code >= 61 && code <= 65) return { desc:'Rainfall', icon:'🌧️' };
+  if (code >= 71 && code <= 75) return { desc:'Snowfall', icon:'❄️' };
+  if (code >= 80 && code <= 82) return { desc:'Rain Showers', icon:'🌧️' };
+  if (code >= 95 && code <= 99) return { desc:'Thunderstorm', icon:'⛈️' };
+  return { desc:'Partly Cloudy', icon:'⛅' };
+}
+
 
 /* =============================================================================
    CORE INTERACTION LOGIC: SEND MESSAGE & STATE TRANSITION
@@ -645,7 +664,7 @@ async function generateResponseAsync(query, mode, lang) {
 
 
 
-}
+
 
 /* =============================================================================
    MARKDOWN PARSER & HELPERS
