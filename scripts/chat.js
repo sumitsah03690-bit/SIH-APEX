@@ -216,125 +216,8 @@ const MODES = {
   }
 };
 
-/* =============================================================================
-   METEOROLOGICAL DATA ENGINE & REGIONAL DICTIONARY
-   =============================================================================
-   Comprehensive meteorological baseline profiles for 30+ Indian urban, coastal,
-   Gangetic, and Himalayan observation centers.
-   
-   FIELDS:
-     - city: Full administrative designation
-     - temp: Ambient dry-bulb temperature
-     - icon: Visual atmospheric condition emoji
-     - desc: Official meteorological classification
-     - humidity: Relative atmospheric moisture
-     - wind: Surface wind velocity and direction vector
-     - visibility: Surface optical visibility
-     - aqi: Central Pollution Control Board (CPCB) air quality band
-     - pressure: Atmospheric sea-level barometric pressure
-     - alert: Optional active IMD cyclone, flood, or cold wave bulletin
-     - farmerAdv: Agro-meteorological field recommendation
-     - travelAdv: Road/highway transit advisory
+/* weatherData dictionary removed — all data comes from backend API only */
 
-   DEBUG GUIDE:
-     - If a city query doesn't match: Check that the dictionary key is lowercase.
-     - If user asks for an unlisted city: The engine dynamically queries the
-       Open-Meteo Geocoding API to retrieve real-time satellite & NWP telemetry!
-   ============================================================================= */
-const weatherData = {
-  mumbai:        { city:'Mumbai, Maharashtra',        temp:'29°C', icon:'🌧', desc:'Arabian Sea Inflow · High Humidity',   humidity:'78%', wind:'16 km/h SW', visibility:'4.0 km', aqi:'68 (Satisfactory)', pressure:'1008 hPa', alert:'Yellow Alert — Coastal Moisture Surge', farmerAdv:'Ensure field drainage in coastal Konkan paddy beds.', travelAdv:'Moderate wet patches along Western Express Highway and Sea Link.' },
-  delhi:         { city:'Delhi NCR',                  temp:'34°C', icon:'☀️', desc:'Clear Sky · Warm Afternoon',            humidity:'32%', wind:'12 km/h NW', visibility:'8.0 km', aqi:'142 (Moderate)',    pressure:'1012 hPa', farmerAdv:'Favorable for field tilling and rabi preparation.', travelAdv:'Clear transit across Yamuna and DND flyways.' },
-  chennai:       { city:'Chennai, Tamil Nadu',        temp:'32°C', icon:'⛈', desc:'Coastal Convergence · Evening Showers',humidity:'74%', wind:'20 km/h SE', visibility:'5.0 km', aqi:'55 (Good)',        pressure:'1009 hPa', alert:'Yellow Alert — Isolated Thunderstorms', farmerAdv:'Protect harvested delta pulses from sudden rainfall.', travelAdv:'Pre-monsoon sea gusts along East Coast Road (ECR).' },
-  bengaluru:     { city:'Bengaluru, Karnataka',       temp:'24°C', icon:'🌤', desc:'Scattered Cumulus · Pleasant Breeze',   humidity:'58%', wind:'9 km/h W',   visibility:'12 km',  aqi:'42 (Good)',        pressure:'1014 hPa', farmerAdv:'Optimal conditions for horticultural harvesting.', travelAdv:'Clear conditions across airport expressway.' },
-  kolkata:       { city:'Kolkata, West Bengal',       temp:'30°C', icon:'🌫', desc:'Gangetic Delta Haze · Humid',           humidity:'82%', wind:'7 km/h E',   visibility:'2.5 km', aqi:'118 (Moderate)',    pressure:'1008 hPa', farmerAdv:'Scout for fungal pathogens in jute and paddy.', travelAdv:'Morning river mist along Vidyasagar Setu.' },
-  hyderabad:     { city:'Hyderabad, Telangana',       temp:'30°C', icon:'🌦', desc:'Partly Overcast · Passing Clouds',      humidity:'64%', wind:'14 km/h SW', visibility:'7.0 km', aqi:'82 (Satisfactory)', pressure:'1011 hPa', farmerAdv:'Safe window for pesticide application.', travelAdv:'Clear transit on Outer Ring Road (ORR).' },
-  pune:          { city:'Pune, Maharashtra',          temp:'27°C', icon:'⛅', desc:'Pleasant Westerly Breeze · Mild Rain',  humidity:'72%', wind:'14 km/h W',  visibility:'8.0 km', aqi:'58 (Good)',        pressure:'1013 hPa', farmerAdv:'Suitable for vegetable pruning and drip irrigation.', travelAdv:'Wet road pavement along Khandala Ghat section.' },
-  ahmedabad:     { city:'Ahmedabad, Gujarat',         temp:'35°C', icon:'☀️', desc:'Hot & Dry · Clear Skies',               humidity:'34%', wind:'11 km/h W',  visibility:'9.0 km', aqi:'124 (Moderate)',    pressure:'1010 hPa', farmerAdv:'Increase irrigation frequency for cotton and castor.', travelAdv:'Clear driving along Ahmedabad-Vadodara expressway.' },
-  jaipur:        { city:'Jaipur, Rajasthan',          temp:'33°C', icon:'☀️', desc:'Sunny · Warm Semiarid Conditions',      humidity:'28%', wind:'10 km/h NW', visibility:'10 km',  aqi:'135 (Moderate)',    pressure:'1012 hPa', farmerAdv:'Conserve soil moisture for mustard and gram sowing.', travelAdv:'Good visibility on Delhi-Jaipur highway.' },
-  varanasi:      { city:'Varanasi, Uttar Pradesh',    temp:'31°C', icon:'🌫', desc:'Gangetic River Haze · Steady Stream',   humidity:'72%', wind:'8 km/h E',   visibility:'2.0 km', aqi:'152 (Moderate)',    pressure:'1010 hPa', farmerAdv:'Maintain normal irrigation in vegetable plots.', travelAdv:'Mist over river basin ghats during early dawn.' },
-  lucknow:       { city:'Lucknow, Uttar Pradesh',     temp:'33°C', icon:'🌤', desc:'Partly Cloudy · Humid Plain Air',       humidity:'60%', wind:'9 km/h NE',  visibility:'6.0 km', aqi:'160 (Moderate)',    pressure:'1011 hPa', farmerAdv:'Monitor sugarcane fields for borer pests.', travelAdv:'Normal traffic flow on Agra-Lucknow expressway.' },
-  patna:         { city:'Patna, Bihar',               temp:'31°C', icon:'🌦', desc:'Light Convective Drizzle Nearby',       humidity:'78%', wind:'10 km/h E',  visibility:'4.0 km', aqi:'148 (Moderate)',    pressure:'1009 hPa', farmerAdv:'Drain stagnant water from low-lying paddy.', travelAdv:'Slightly reduced visibility on Ganga Setu.' },
-  guwahati:      { city:'Guwahati, Assam',            temp:'27°C', icon:'🌧', desc:'Brahmaputra Basin Moisture · Overcast', humidity:'86%', wind:'8 km/h NE',  visibility:'3.5 km', aqi:'48 (Good)',        pressure:'1007 hPa', alert:'Yellow Alert — Isolated Heavy Showers', farmerAdv:'Keep tea garden drainage channels clear.', travelAdv:'Watch for wet mud along hill bypass roads.' },
-  shillong:      { city:'Shillong, Meghalaya',        temp:'19°C', icon:'🌧', desc:'Orographic Cloud Inflow · High Mist',   humidity:'92%', wind:'12 km/h S',  visibility:'1.2 km', aqi:'22 (Clean)',       pressure:'1018 hPa', alert:'Agro Alert — Cloudburst Watch', farmerAdv:'Ideal conditions for ginger, turmeric, and terrace crops.', travelAdv:'Dense fog patches on Guwahati-Shillong route.' },
-  shimla:        { city:'Shimla, Himachal Pradesh',   temp:'14°C', icon:'❄️', desc:'Cool Highland Breeze · Clear Air',      humidity:'64%', wind:'18 km/h N',  visibility:'9.0 km', aqi:'25 (Clean)',       pressure:'1022 hPa', farmerAdv:'Protect apple orchards against sudden night frost.', travelAdv:'All major hill passes open with normal transit.' },
-  manali:        { city:'Manali, Himachal Pradesh',   temp:'11°C', icon:'🏔', desc:'Sub-Zero Pass Winds · Mist in Valley',  humidity:'70%', wind:'20 km/h N',  visibility:'6.0 km', aqi:'18 (Clean)',       pressure:'1024 hPa', farmerAdv:'Mulching advised for temperate fruit trees.', travelAdv:'Rohtang pass experiencing brisk chilly winds.' },
-  srinagar:      { city:'Srinagar, Jammu & Kashmir',  temp:'16°C', icon:'🌤', desc:'Crisp Mountain Atmosphere',             humidity:'52%', wind:'10 km/h NW', visibility:'10 km',  aqi:'35 (Good)',        pressure:'1018 hPa', farmerAdv:'Harvesting season active in saffron and walnut zones.', travelAdv:'Smooth transit across Jammu-Srinagar national highway.' },
-  chandigarh:    { city:'Chandigarh (UT)',            temp:'32°C', icon:'☀️', desc:'Sunny · Foothill Plain Warmth',         humidity:'42%', wind:'10 km/h W',  visibility:'9.0 km', aqi:'95 (Satisfactory)', pressure:'1012 hPa', farmerAdv:'Ideal window for wheat bed preparation.', travelAdv:'Clear driving across Shivalik access routes.' },
-  kochi:         { city:'Kochi, Kerala',              temp:'29°C', icon:'🌊', desc:'Arabian Sea Breeze · Tropical Moisture',humidity:'82%', wind:'15 km/h W',  visibility:'6.0 km', aqi:'38 (Clean)',       pressure:'1008 hPa', alert:'Coastal Swell Advisory', farmerAdv:'Maintain drainage in rubber and spice plantations.', travelAdv:'Coastal highways clear with occasional drizzle.' },
-  visakhapatnam: { city:'Visakhapatnam, Andhra Pradesh',temp:'31°C',icon:'⛈', desc:'Maritime Convergence · Humid Winds',   humidity:'76%', wind:'18 km/h SE', visibility:'5.0 km', aqi:'54 (Good)',        pressure:'1009 hPa', alert:'Cyclone Division Watch Active', farmerAdv:'Check coastal paddy bunds for tidal intrusion.', travelAdv:'Brisk crosswinds along beach road corridors.' },
-  bhopal:        { city:'Bhopal, Madhya Pradesh',     temp:'31°C', icon:'⛅', desc:'Central Plateau Warmth · Light Clouds', humidity:'52%', wind:'11 km/h SW', visibility:'8.0 km', aqi:'88 (Satisfactory)', pressure:'1011 hPa', farmerAdv:'Favorable for soybean and pulse harvesting.', travelAdv:'Clear intercity connectivity across MP highways.' },
-  indore:        { city:'Indore, Madhya Pradesh',     temp:'30°C', icon:'🌤', desc:'Mild Malwa Breeze · Pleasant Sky',      humidity:'50%', wind:'12 km/h W',  visibility:'9.0 km', aqi:'82 (Satisfactory)', pressure:'1012 hPa', farmerAdv:'Soil moisture adequate for rabi sowing prep.', travelAdv:'Clear roads across Indore-Ujjain corridor.' },
-  surat:         { city:'Surat, Gujarat',             temp:'32°C', icon:'🌊', desc:'Coastal Gulf of Khambhat Breeze',       humidity:'74%', wind:'14 km/h SW', visibility:'6.0 km', aqi:'102 (Moderate)',   pressure:'1009 hPa', farmerAdv:'Suitable for sugarcane and banana cultivation.', travelAdv:'Dry roads along NH-48 Mumbai-Surat link.' },
-  bhubaneswar:   { city:'Bhubaneswar, Odisha',        temp:'30°C', icon:'🌦', desc:'Bay of Bengal Inflow · Overcast',       humidity:'80%', wind:'12 km/h E',  visibility:'4.5 km', aqi:'72 (Satisfactory)', pressure:'1008 hPa', alert:'Pre-monsoon Coastal Watch', farmerAdv:'Avoid pesticide spraying during rain forecast.', travelAdv:'Normal traffic across Cuttack-Bhubaneswar highway.' },
-  dehradun:      { city:'Dehradun, Uttarakhand',      temp:'26°C', icon:'🌦', desc:'Doon Valley Showers · Pleasant',        humidity:'68%', wind:'8 km/h NW',  visibility:'7.0 km', aqi:'45 (Good)',        pressure:'1015 hPa', farmerAdv:'Good soil saturation in basmati paddy fields.', travelAdv:'Watch for sudden wet curves on Mussoorie hill road.' },
-  goa:           { city:'Goa (Panaji)',               temp:'29°C', icon:'🌊', desc:'Konkan Coast Waves · Warm & Humid',     humidity:'78%', wind:'15 km/h SW', visibility:'8.0 km', aqi:'32 (Clean)',       pressure:'1008 hPa', farmerAdv:'Optimal for coconut and cashew plantations.', travelAdv:'Smooth tourist road conditions.' }
-};
-
-/**
- * Maps WMO weather interpretation codes to human-readable text and emojis.
- * @param {number} code - WMO weather code (0 to 99)
- * @returns {{desc: string, icon: string}}
- */
-function getWmoWeatherInfo(code) {
-  if (code === 0) return { desc:'Clear Sky', icon:'☀️' };
-  if (code === 1 || code === 2) return { desc:'Mainly Clear · Passing Clouds', icon:'🌤' };
-  if (code === 3) return { desc:'Overcast · Cloud Blanket', icon:'☁️' };
-  if (code === 45 || code === 48) return { desc:'Radiation Fog · Low Visibility', icon:'🌫️' };
-  if (code >= 51 && code <= 55) return { desc:'Light Drizzle · Humid Air', icon:'🌦️' };
-  if (code >= 61 && code <= 65) return { desc:'Continuous Rainfall · Wet Soil', icon:'🌧️' };
-  if (code >= 71 && code <= 75) return { desc:'Snowfall · Chilly Mountain Air', icon:'❄️' };
-  if (code >= 80 && code <= 82) return { desc:'Rain Showers · Convective Clouds', icon:'🌧️' };
-  if (code >= 95 && code <= 99) return { desc:'Thunderstorm with Gusts', icon:'⛈️' };
-  return { desc:'Partly Cloudy', icon:'⛅' };
-}
-
-/**
- * Dynamically queries the free Open-Meteo Geocoding & Weather Forecast API
- * for any Indian city or district requested by the user in chat.
- * 
- * @param {string} cityName - Name of the city or district
- * @returns {Promise<Object|null>} Weather card object or null if not found
- */
-async function fetchLiveCityWeather(cityName) {
-  try {
-    const geoUrl = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityName)}&country=India&count=1&language=en&format=json`;
-    const geoRes = await fetch(geoUrl);
-    if (!geoRes.ok) return null;
-    const geoData = await geoRes.json();
-    if (!geoData.results || geoData.results.length === 0) return null;
-
-    const loc = geoData.results[0];
-    const lat = loc.latitude;
-    const lon = loc.longitude;
-    const stateName = loc.admin1 ? `, ${loc.admin1}` : '';
-
-    const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code,apparent_temperature,surface_pressure,precipitation&timezone=auto`;
-    const weatherRes = await fetch(weatherUrl);
-    if (!weatherRes.ok) return null;
-    const wData = await weatherRes.json();
-    const curr  = wData.current;
-    if (!curr) return null;
-
-    const wmo = getWmoWeatherInfo(curr.weather_code);
-    return {
-      city: `${loc.name}${stateName}`,
-      temp: `${Math.round(curr.temperature_2m)}°C`,
-      icon: wmo.icon,
-      desc: `${wmo.desc} (Live Satellite Telemetry)`,
-      humidity: `${Math.round(curr.relative_humidity_2m)}%`,
-      wind: `${Math.round(curr.wind_speed_10m)} km/h`,
-      visibility: curr.precipitation > 0 ? '4.0 km (Rain)' : '10 km (Clear)',
-      pressure: curr.surface_pressure ? `${Math.round(curr.surface_pressure)} hPa` : '1012 hPa',
-      apparent: curr.apparent_temperature ? `${Math.round(curr.apparent_temperature)}°C` : null,
-      alert: curr.precipitation > 5 ? 'Heavy Rain Notice' : null,
-      farmerAdv: curr.precipitation > 0 ? 'Rainfall detected. Postpone spray operations.' : 'Favorable conditions for routine field activities.',
-      travelAdv: curr.precipitation > 0 ? 'Wet road surface. Drive carefully on highways.' : 'Normal road visibility across the district.'
-    };
-  } catch (err) {
-    console.warn(`[LiveCityFetch] Error querying live weather for "${cityName}":`, err.message);
-    return null;
-  }
-}
 
 /* =============================================================================
    CORE INTERACTION LOGIC: SEND MESSAGE & STATE TRANSITION
@@ -394,7 +277,7 @@ async function sendMessage() {
     console.error('[WeatherGPT Chat] Response generation failed:', err);
     typingEl.remove();
     state.isTyping = false;
-    appendAIMessage("I encountered a temporary connection issue. Showing official baseline weather data instead.", weatherData.delhi);
+    appendAIMessage("⚠️ Something went wrong. Please check that the backend server is running on `localhost:8000`.");
     scrollToBottom();
   }
 }
@@ -687,27 +570,14 @@ function closeMediaModal() {
 }
 
 /* =============================================================================
-   AI INTELLIGENCE ROUTER (Asynchronous with Live Geocoding & NWP Telemetry)
+   AI INTELLIGENCE ROUTER — Backend Only (No Fake Fallbacks)
    =============================================================================
-   Processes user weather prompts in English, Hindi, and Telugu.
-   
-   RESOLUTION PIPELINE:
-     1. Language & Greeting Matching: Welcomes user with persona tailored to active mode.
-     2. Built-in Regional Cache: Fast match for 30+ major Indian meteorological stations.
-     3. Dynamic Live Geocoding & NWP Fetch: If user queries an unlisted city or district,
-        asynchronously resolves coordinates via Open-Meteo and returns real-time data.
-     4. Specialized Bulletins: Cyclones, 7-Day Forecasts, Ganga River Hydrology,
-        Agro-meteorological crop advisories, and Mountain highway travel status.
-
-   DEBUG GUIDE:
-     - Check console output for '[LiveCityFetch]' if an unlisted city was requested.
-     - Verify state.mode ('home' | 'farmer' | 'travel' | 'alert') and state.lang ('en' | 'hi' | 'te').
+   All responses come from the FastAPI backend → Gemini 2.5 Flash + Open-Meteo.
+   If the backend is unreachable, a clear error is shown to the user.
    ============================================================================= */
 async function generateResponseAsync(query, mode, lang) {
-  const q = query.toLowerCase().trim();
-
-  // ── 0. LIVE GEMINI 2.5 FLASH BACKEND (FastAPI on http://localhost:8000) ──
   const MAX_RETRIES = 3;
+
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
       const backendRes = await fetch('http://localhost:8000/api/chat', {
@@ -719,7 +589,7 @@ async function generateResponseAsync(query, mode, lang) {
           lang: lang,
           latitude: state.userLocation?.lat ?? null,
           longitude: state.userLocation?.lon ?? null,
-          conversation_history: state.conversationHistory   // ← full memory sent every turn
+          conversation_history: state.conversationHistory
         })
       });
 
@@ -727,16 +597,16 @@ async function generateResponseAsync(query, mode, lang) {
         const data = await backendRes.json();
         const answer = data.answer || '';
 
-        // Retry if API was overloaded (partial / error response)
-        if (answer.includes('overloaded') || answer.includes('503') || answer.length < 10) {
+        // Retry if Gemini was overloaded
+        if (answer.includes('overloaded') || answer.includes('temporarily unavailable') || answer.length < 10) {
           if (attempt < MAX_RETRIES) {
-            await new Promise(r => setTimeout(r, attempt * 1500)); // 1.5s, 3s backoff
+            await new Promise(r => setTimeout(r, attempt * 1500));
             continue;
           }
         }
 
-        if (answer && !answer.startsWith('WeatherGPT Connection Error') && !answer.startsWith('⏳') && !answer.startsWith('⚠️ WeatherGPT Intelligence Engine temporarily unavailable')) {
-          // Update client-side history from backend's authoritative updated list
+        if (answer) {
+          // Update conversation history from backend
           if (data.conversation_history && Array.isArray(data.conversation_history)) {
             state.conversationHistory = data.conversation_history;
           } else {
@@ -748,293 +618,33 @@ async function generateResponseAsync(query, mode, lang) {
           return { text: answer };
         }
       } else if (backendRes.status === 503 || backendRes.status === 429) {
-        // API overloaded — wait and retry
         if (attempt < MAX_RETRIES) {
           await new Promise(r => setTimeout(r, attempt * 2000));
           continue;
         }
       }
     } catch (err) {
-      if (attempt === MAX_RETRIES) {
-        console.info('[WeatherGPT] Backend offline after retries, using client fallback:', err.message);
-      } else {
+      if (attempt < MAX_RETRIES) {
         await new Promise(r => setTimeout(r, attempt * 1000));
         continue;
       }
     }
-    break; // exit retry loop on non-retryable error
+    break;
   }
 
-  // ── 1. HINDI OUTPUT ──
-  if (lang === 'hi') {
-    if (q.match(/^(hi|hello|hey|namaste|नमस्ते)/)) {
-      return { text: "नमस्ते! 🌤 मैं **WeatherGPT** हूँ — IMD और MoES डेटा से संचालित आपका मौसम सहायक।\n\nआप किसी भी शहर का मौसम, चक्रवात चेतावनी, या कृषि मौसम सलाह पूछ सकते हैं।" };
-    }
-    // Check built-in cities
-    for (const [key, data] of Object.entries(weatherData)) {
-      if (q.includes(key)) {
-        return {
-          text: `**${data.city}** का ताज़ा मौसम विवरण:\n\n` +
-                `वर्तमान स्थिति: **${data.desc}**। तापमान **${data.temp}** दर्ज किया गया है।\n` +
-                `${data.alert ? `⚠ **IMD चेतावनी:** ${data.alert}।\n` : ''}` +
-                `नमी: **${data.humidity}** | हवा की गति: **${data.wind}** | दृश्यता: **${data.visibility}**\n\n` +
-                `*डेटा स्रोत: भारतीय मौसम विज्ञान विभाग (IMD) + Open-Meteo*`,
-          card: data,
-        };
-      }
-    }
-    // Check dynamic live city lookup
-    const cityCandidate = extractCityFromQuery(q);
-    if (cityCandidate) {
-      const liveData = await fetchLiveCityWeather(cityCandidate);
-      if (liveData) {
-        return {
-          text: `**${liveData.city}** का लाइव उपग्रह और मौसम विवरण:\n\n` +
-                `वर्तमान तापमान **${liveData.temp}** है (${liveData.desc})।\n` +
-                `हवा में नमी: **${liveData.humidity}** | हवा की गति: **${liveData.wind}** | वायुदाब: **${liveData.pressure}**\n\n` +
-                `*डेटा स्रोत: IMD रियल-टाइम स्टेशन नेटवर्क एवं उपग्रह उत्पाद*`,
-          card: liveData
-        };
-      }
-    }
-    if (q.match(/(चक्रवात|बाढ़|चेतावनी|cyclone|flood)/)) {
-      return { text: "🌀 **चक्रवात चेतावनी — बंगाल की खाड़ी**\n\nIMD चक्रवात प्रभाग द्वारा **'वायु'** के लिए चेतावनी जारी की गई है।\n- **स्थिति:** 18.2°N, 87.5°E (तट से 380 किमी)\n- **हवा की गति:** 85–95 किमी/घंटा\n- **अलर्ट:** आंध्र प्रदेश और ओडिशा तट के लिए **रेड अलर्ट** जारी है।" };
-    }
-    return { text: "मैं आपकी सहायता करने के लिए तैयार हूँ। कृपया किसी शहर का नाम (उदा. \"मुंबई का मौसम\") या चक्रवात चेतावनी के बारे में पूछें।" };
-  }
-
-  // ── 2. TELUGU OUTPUT ──
-  if (lang === 'te') {
-    if (q.match(/^(hi|hello|hey|namaste|నమస్కారం)/)) {
-      return { text: "నమస్కారం! 🌤 నేను **WeatherGPT** — IMD ఆధారిత వాతావరణ సహాయకుడు.\n\nమీరు నన్ను నగరాల వాతావరణం, తుఫాను హెచ్చరికలు లేదా పంట సలహాలు అడగవచ్చు." };
-    }
-    for (const [key, data] of Object.entries(weatherData)) {
-      if (q.includes(key)) {
-        return {
-          text: `**${data.city}** ప్రస్తుత వాతావరణ నివేదిక:\n\n` +
-                `వాతావరణం: **${data.desc}**, ఉష్ణోగ్రత **${data.temp}**.\n` +
-                `${data.alert ? `⚠ **IMD హెచ్చరిక:** ${data.alert}.\n` : ''}` +
-                `తేమ: **${data.humidity}** | గాలి వేగం: **${data.wind}** | దృశ్యమానత: **${data.visibility}**\n\n*మూలం: భారత వాతావరణ విభాగం (IMD)*`,
-          card: data
-        };
-      }
-    }
-    const cityCandidate = extractCityFromQuery(q);
-    if (cityCandidate) {
-      const liveData = await fetchLiveCityWeather(cityCandidate);
-      if (liveData) {
-        return {
-          text: `**${liveData.city}** లైవ్ వాతావరణ వివరాలు:\n\n` +
-                `ప్రస్తుత ఉష్ణోగ్రత: **${liveData.temp}** (${liveData.desc}).\n` +
-                `గాలిలో తేమ: **${liveData.humidity}** | గాలి వేగం: **${liveData.wind}**\n\n*మూలం: IMD లైవ్ శాటిలైట్ ఫీడ్*`,
-          card: liveData
-        };
-      }
-    }
-    return { text: "నమస్కారం! ఏదైనా నగరం లేదా వాతావరణ ప్రశ్న అడగండి (ఉదా: \"హైదరాబాద్ వాతావరణం\")." };
-  }
-
-  // ── 3. ENGLISH INTELLIGENCE ROUTING ──
-  if (q.match(/^(hi|hello|hey|greetings|start)/)) {
-    if (mode === 'farmer') {
-      return { text: "🌾 **Kisan Greetings!** I am WeatherGPT in **Farmer Mode**.\n\nI provide real-time agro-met advisories, soil moisture alerts, and optimal sowing windows. Which crop or district are you querying for?" };
-    }
-    if (mode === 'travel') {
-      return { text: "✈️ **Travel Mode active!** Ready to assist with highway rain forecasts, mountain pass conditions, and route departure timing. Where are you traveling?" };
-    }
-    if (mode === 'marine') {
-      return { text: "⚓ **Marine Mode active!** Connected to INCOIS wave buoys, tidal harmonics, sea swell models, and coastal port telemetry. Which coastline or harbor are you checking?" };
-    }
-    return { text: "Hello! I'm **WeatherGPT**, your intelligent weather assistant connected to IMD observation networks, Open-Meteo telemetry, and MoES forecasting models.\n\nAsk about live temperatures, cyclone tracks, or regional forecasts across India." };
-  }
-
-  // A. Check built-in Indian city dictionary
-  for (const [key, data] of Object.entries(weatherData)) {
-    if (q.includes(key)) {
-      const extra = mode === 'farmer' && data.farmerAdv
-        ? `\n\n🌱 **Agro Advisory:** ${data.farmerAdv}`
-        : mode === 'travel' && data.travelAdv
-        ? `\n\n🛣️ **Travel Advisory:** ${data.travelAdv}`
-        : '';
-      return {
-        text: `Here is the official IMD meteorological report for **${data.city}**:\n\n` +
-              `• Current Condition: **${data.desc}**\n` +
-              `• Ambient Temperature: **${data.temp}**\n` +
-              `• Relative Humidity: **${data.humidity}**\n` +
-              `• Wind Velocity: **${data.wind}**\n` +
-              `• Surface Visibility: **${data.visibility}**\n` +
-              `• Barometric Pressure: **${data.pressure || '1010 hPa'}**\n` +
-              `• Air Quality Index: **${data.aqi || 'Satisfactory'}**` +
-              (data.alert ? `\n\n⚠ **Active Warning:** ${data.alert}` : '') +
-              extra +
-              `\n\n*Source: India Meteorological Department (IMD) Real-time Station Feed & CPCB*`,
-        card: data,
-      };
-    }
-  }
-
-  // B. Dynamic Live Weather Fetching for any Indian city or district
-  const cityCandidate = extractCityFromQuery(q);
-  if (cityCandidate) {
-    const liveCard = await fetchLiveCityWeather(cityCandidate);
-    if (liveCard) {
-      const modeAdvisory = mode === 'farmer' && liveCard.farmerAdv
-        ? `\n\n🌱 **Agro Advisory:** ${liveCard.farmerAdv}`
-        : mode === 'travel' && liveCard.travelAdv
-        ? `\n\n🛣️ **Travel Advisory:** ${liveCard.travelAdv}`
-        : '';
-
-      return {
-        text: `Real-time meteorological observation for **${liveCard.city}**:\n\n` +
-              `• Condition: **${liveCard.desc}**\n` +
-              `• Current Temperature: **${liveCard.temp}**${liveCard.apparent ? ` (Feels like ${liveCard.apparent})` : ''}\n` +
-              `• Relative Humidity: **${liveCard.humidity}**\n` +
-              `• Surface Wind Vector: **${liveCard.wind}**\n` +
-              `• Atmospheric Pressure: **${liveCard.pressure}**\n` +
-              `• Optical Visibility: **${liveCard.visibility}**` +
-              (liveCard.alert ? `\n\n⚠ **Active Warning:** ${liveCard.alert}` : '') +
-              modeAdvisory +
-              `\n\n*Source: Public Meteorological Telemetry & Satellite Sensor Feed*`,
-        card: liveCard
-      };
-    }
-  }
-
-  // C. Cyclone / Severe Disaster Bulletins
-  if (q.match(/(cyclone|flood|warning|alert|disaster|storm|bay of bengal|arabian sea)/)) {
-    return {
-      text: "🌀 **Active Cyclone Bulletin — Bay of Bengal**\n\n" +
-            "**System Classification:** Cyclonic Storm **'Vayu'**\n" +
-            "• **Current Coordinates:** 18.2°N, 87.5°E (approx. 380 km southeast of Visakhapatnam)\n" +
-            "• **Max Sustained Surface Winds:** 85–95 km/h, gusting to 105 km/h\n" +
-            "• **Track & Motion:** Moving NNW at 14 km/h towards north Andhra Pradesh and south Odisha coastline\n\n" +
-            "**IMD Advisory Level:**\n" +
-            "• 🔴 **Red Alert:** Coastal districts of Visakhapatnam, Vizianagaram, Srikakulam, and Ganjam.\n" +
-            "• 🟠 **Orange Alert:** Coastal West Bengal and adjoining deltaic regions.\n" +
-            "• Total suspension of fishing operations along central and north Bay of Bengal.\n\n" +
-            "*Source: IMD Cyclone Warning Division, New Delhi*",
-    };
-  }
-
-  // D. 7-Day Forecast
-  if (q.match(/(7.day|seven.day|weekly|delhi|forecast|rain tomorrow)/)) {
-    return {
-      text: "📅 **7-Day Weather Outlook — Delhi NCR & Northern Plains**\n\n" +
-            "| Day | Condition | High | Low | Precipitation |\n" +
-            "|---|---|---|---|---|\n" +
-            "| Today | ☀️ Clear & Sunny | 34°C | 25°C | 5% |\n" +
-            "| Tomorrow | ⛅ Partly Cloudy | 33°C | 24°C | 15% |\n" +
-            "| Sunday | 🌦 Thunder Showers | 30°C | 23°C | 60% |\n" +
-            "| Monday | 🌧 Moderate Rain | 28°C | 22°C | 75% |\n" +
-            "| Tuesday | 🌧 Continuous Rain | 27°C | 21°C | 80% |\n" +
-            "| Wednesday | 🌦 Clearing Sky | 29°C | 22°C | 35% |\n" +
-            "| Thursday | ☀️ Sunny & Humid | 32°C | 24°C | 10% |\n\n" +
-            "**Air Quality:** AQI 128 (Moderate). Prevailing wind flow from Northwest.\n\n" +
-            "*Source: Regional Meteorological Centre (RMC), New Delhi*",
-    };
-  }
-
-  // E. Drone / Satellite 4K Feed Telemetry (sources/ folder)
-  if (q.match(/(drone|cloud layer|altitude|satellite|scan|4k)/)) {
-    return {
-      text: "🛰️ **Atmospheric Drone Scan Telemetry Analysis (sources/ 4K Feed)**\n\n" +
-            "• **Observation Altitude:** 1,200m AGL (Above Ground Level)\n" +
-            "• **Cloud Base Height:** 850m with dense stratocumulus underlayer\n" +
-            "• **Relative Inflow Humidity:** 91% indicating strong maritime moisture pumping\n" +
-            "• **Precipitation Probability:** 75% within the next 3 to 6 hours\n\n" +
-            "Recommendation: Inversion layer is stable, but convective turbulence is anticipated along the frontal boundary.",
-    };
-  }
-
-  // F. Ganga River Hydrology
-  if (q.match(/(ganga|river|varanasi|hydrology|water level)/)) {
-    return {
-      text: "🌊 **Ganges Hydrological & Basin Observation (Varanasi Telemetry)**\n\n" +
-            "• **River Stage:** 68.42m (Warning Level: 70.26m, Danger Level: 71.26m)\n" +
-            "• **Trend:** Steady with slow receding trend of 2 cm/24hr\n" +
-            "• **Surface Mist Visibility:** 1.5 km in morning hours, clearing to 7 km by midday\n" +
-            "• **Water Flow Velocity:** 1.8 m/s\n\n" +
-            "*Source: Central Water Commission (CWC) + Varanasi IMD Station*",
-    };
-  }
-
-  // G. Agro / Farmer
-  if (q.match(/(wheat|punjab|crop|sow|irrigate|sugarcane|soil|paddy)/)) {
-    return {
-      text: "🌾 **Agro-Meteorological Advisory (PAU & IMD Agrimet)**\n\n" +
-            "• **Crop:** Wheat (Triticum aestivum) / Autumn Rabi\n" +
-            "• **Current Soil Moisture:** 42% (Sufficient for crown root initiation)\n" +
-            "• **Temperature Window:** Minimum temperature 11°C, favorable for tillering\n" +
-            "• **Advisory:** Hold off on irrigation for 48 hours as convective drizzle is forecast. Scout for yellow rust spores along leaf margins.",
-    };
-  }
-
-  // H. Travel / Highway Bulletins
-  if (q.match(/(manali|highway|road|kedarnath|ladakh|pass|chicago|route|delhi to manali)/)) {
-    return {
-      text: "🛣️ **WeatherGPT Travel Mode &middot; Route Weather Decision**\n\n" +
-            "• **Route Corridor:** Delhi &rarr; Chandigarh &rarr; Mandi &rarr; Manali (NH-44 / NH-21)\n" +
-            "• **Live Radar Nowcast:** Ingested IMD Patiala Doppler Radar indicates torrential rainfall peaks on NH-21 between Bilaspur and Mandi from 10:45 AM to 1:15 PM.\n" +
-            "• **Surface Hazards:** Hydroplane probability exceeds 80%; optical visibility drops below 800m near Pandoh Dam; loose boulder scree risk on ghat cuts.\n" +
-            "• **Actionable Recommendation:** Reschedule departure to **7:15 AM** (75-minute delay) to cross the valley after peak precipitation, or divert via the Kiratpur-Nerchowk bypass.\n\n" +
-            "*Sources Orchestrated: IMD Doppler Radar (Patiala) + NHAI Live Road Sensors + CWC Landslide Watch*",
-    };
-  }
-
-  // I. Marine & Coastal Ocean Intelligence
-  if (q.match(/(marine|fishing|vizag|boat|tide|wave|harbor|ocean|sea|swell|goa beach)/)) {
-    return {
-      text: "⚓ **INCOIS & MoES Marine Intelligence Bulletin**\n\n" +
-            "• **Coastal Sector:** Visakhapatnam to Kalingapatnam (Andhra Coast)\n" +
-            "• **Significant Wave Height (SWH):** 2.8m to 3.4m with 11.2s swell period from South-Southeast\n" +
-            "• **Tidal Status:** High Tide at 21:40 IST (+1.62m Chart Datum); Low Tide at 03:15 IST (+0.38m)\n" +
-            "• **Vessel Risk Assessment:** High capsize risk for artisanal, non-motorized, and small mechanized craft (<15m) navigating near surf breaks.\n" +
-            "• **Actionable Advisory:** **Total suspension of artisanal sea-entry** through 06:00 IST tomorrow. Deep-sea trawlers must maintain VHF Channel 16 and dock before peak swell cresting at 22:00 IST.\n\n" +
-            "*Sources Orchestrated: INCOIS Wave Buoy Network + Coastal High-Frequency Radars + MoES Sea-State Forecast*",
-    };
-  }
-
-  // Default fallback
+  // Backend unreachable — show clear error (no fake data)
   return {
-    text: "I am ready to help with comprehensive meteorological intelligence across India.\n\n" +
-          "You can ask me about:\n" +
-          "• Real-time city conditions (e.g. *\"Today's weather in Mumbai\"* or *\"Pune temperature\"*)\n" +
-          "• Active cyclone alerts (e.g. *\"Cyclone alerts in Bay of Bengal\"*)\n" +
-          "• 7-day city forecasts (e.g. *\"7-day forecast for Delhi\"*)\n" +
-          "• Agro-weather advisories (e.g. *\"Punjab wheat crop advisory\"*)\n" +
-          "• Highway travel conditions (e.g. *\"Delhi to Manali highway status\"*)",
+    text: "⚠️ **Could not connect to WeatherGPT server.**\n\n" +
+          "The backend server at `localhost:8000` is not running.\n\n" +
+          "**To start it:**\n" +
+          "```bash\ncd backend\npip install -r requirements.txt\nuvicorn main:app --reload\n```\n\n" +
+          "Make sure your `backend/.env` file has `GEMINI_API_KEY` set."
   };
 }
 
-/**
- * Extracts a candidate city or district name from natural language query.
- * e.g., "what is the weather in Jaipur" -> "Jaipur"
- *       "temperature of Surat" -> "Surat"
- * @param {string} query - Raw user query
- * @returns {string|null} Candidate city name or null
- */
-function extractCityFromQuery(query) {
-  // Common intent patterns: "weather in X", "forecast for X", "temperature of X", "X weather"
-  const patterns = [
-    /(?:weather|temperature|forecast|climate|rain|humidity)\s+(?:in|for|of|at)\s+([a-zA-Z\s]{3,20})/i,
-    /([a-zA-Z\s]{3,20})\s+(?:weather|temperature|forecast|rain)/i,
-  ];
 
-  for (const pat of patterns) {
-    const match = query.match(pat);
-    if (match && match[1]) {
-      const cleaned = match[1].trim().replace(/\b(today|tomorrow|now|please|city|district)\b/gi, '').trim();
-      if (cleaned.length >= 3) return cleaned;
-    }
-  }
 
-  // Single word lookup (e.g. user just types "Kanpur" or "Nashik")
-  const words = query.trim().split(/\s+/);
-  if (words.length === 1 && words[0].length >= 3 && !['hello', 'help', 'about', 'clear'].includes(words[0])) {
-    return words[0];
-  }
 
-  return null;
 }
 
 /* =============================================================================

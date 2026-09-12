@@ -6,8 +6,8 @@ class ChatRequest(BaseModel):
     message: str
     mode: Optional[str] = "home"
     lang: Optional[str] = "en"
-    latitude: float | None = None
-    longitude: float | None = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
     session_id: Optional[str] = None
     previous_context: Optional[Dict[str, Any]] = None
     conversation_history: Optional[List[Dict[str, Any]]] = None
