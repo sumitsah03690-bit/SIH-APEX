@@ -362,19 +362,21 @@ async function initNavLiveChip() {
   if (!spinner || !ready) return;
 
   async function fetchAndRender(lat, lon, cityName) {
-    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&timezone=auto`;
-    const res = await fetch(url);
-    if (!res.ok) throw new Error('fetch failed');
-    const d = await res.json();
-    const temp = Math.round(d.current.temperature_2m);
-    const icon = WMO_MAP[d.current.weather_code] || '⛅';
-    iconEl.textContent = icon;
-    tempEl.textContent = `${temp}°`;
-    cityEl.textContent = cityName;
-    spinner.style.display = 'none';
-    ready.style.display   = 'flex';
-    // Store in session so chat page can reuse
-    sessionStorage.setItem('wgpt_location', JSON.stringify({ lat, lon, city: cityName }));
+    try {
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&timezone=auto`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('fetch failed');
+      const d = await res.json();
+      const temp = Math.round(d.current.temperature_2m);
+      const icon = WMO_MAP[d.current.weather_code] || '⛅';
+      iconEl.textContent = icon;
+      tempEl.textContent = `${temp}°`;
+      cityEl.textContent = cityName;
+      spinner.style.display = 'none';
+      ready.style.display   = 'flex';
+      // Store in session so chat page can reuse
+      sessionStorage.setItem('wgpt_location', JSON.stringify({ lat, lon, city: cityName }));
+    } catch (_) {}
   }
 
   // Check session cache first
@@ -391,55 +393,107 @@ async function initNavLiveChip() {
     }
   } catch(_) {}
 
-  // Try GPS
-  if (navigator.geolocation) {
+  // Helper: Fast IP geolocation fallback (~200ms)
+  async function detectIpLocation() {
     try {
-      const pos = await new Promise((res, rej) =>
-        navigator.geolocation.getCurrentPosition(res, rej, { timeout: 6000, maximumAge: 60000 })
-      );
-      const lat = pos.coords.latitude;
-      const lon = pos.coords.longitude;
-      let cityName = 'My Location';
-      try {
-        const r = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10`,
-          { headers: { 'User-Agent': 'WeatherGPT/1.0' }, signal: AbortSignal.timeout(4000) }
-        );
-        if (r.ok) {
-          const a = (await r.json()).address || {};
-          cityName = a.city || a.town || a.village || a.county || 'My Location';
-        }
-      } catch(_) {}
-      await fetchAndRender(lat, lon, cityName);
-      return;
-    } catch(e) {
-      console.info('[NavChip] GPS denied:', e.message);
-    }
+      const res = await fetch('https://ipinfo.io/json', { signal: AbortSignal.timeout(3500) });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (data.loc) {
+        const [ipLat, ipLon] = data.loc.split(',').map(Number);
+        const city = data.city || data.region || 'My Region';
+        return { lat: ipLat, lon: ipLon, city };
+      }
+    } catch (_) {}
+    return null;
   }
 
-  // GPS denied — show "Allow Location" button instead of fake data
-  spinner.style.display = 'none';
-  ready.style.display = 'flex';
-  iconEl.textContent = '📍';
-  tempEl.textContent = '';
-  cityEl.textContent = 'Allow Location';
-  if (chip) {
-    chip.style.cursor = 'pointer';
-    chip.title = 'Click to share your location for live weather';
-    chip.onclick = async () => {
-      iconEl.textContent = '⏳'; cityEl.textContent = 'Detecting…'; tempEl.textContent = '';
-      try {
-        const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { timeout: 10000 }));
-        const lat = pos.coords.latitude, lon = pos.coords.longitude;
-        let cityName = 'My Location';
+  // Helper: Reverse-geocode coordinates
+  async function reverseGeocode(lat, lon) {
+    try {
+      const nomRes = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=en&zoom=14`,
+        { headers: { 'User-Agent': 'WeatherGPT/1.0' }, signal: AbortSignal.timeout(4000) }
+      );
+      if (nomRes.ok) {
+        const addr = (await nomRes.json()).address || {};
+        return addr.suburb || addr.neighbourhood || addr.city || addr.town || addr.village || addr.state_district || addr.county || 'My Location';
+      }
+    } catch (_) {}
+    return 'My Location';
+  }
+
+  // Permission watcher
+  if (navigator.permissions && navigator.permissions.query) {
+    navigator.permissions.query({ name: 'geolocation' }).then(status => {
+      status.onchange = async () => {
+        if (status.state === 'granted') {
+          try {
+            const pos = await new Promise((res, rej) =>
+              navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 })
+            );
+            const lat = pos.coords.latitude, lon = pos.coords.longitude;
+            const city = await reverseGeocode(lat, lon);
+            await fetchAndRender(lat, lon, city);
+          } catch (_) {}
+        }
+      };
+    }).catch(() => {});
+  }
+
+  // STEP 1: Concurrently start IP detection
+  const ipPromise = detectIpLocation();
+
+  // STEP 2: Start GPS acquisition
+  let gpsResolved = false;
+  const gpsPromise = (async () => {
+    if (!navigator.geolocation) return false;
+    try {
+      const pos = await new Promise((res, rej) =>
+        navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: false, timeout: 12000, maximumAge: 60000 })
+      );
+      gpsResolved = true;
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
+      const city = await reverseGeocode(lat, lon);
+      await fetchAndRender(lat, lon, city);
+      return true;
+    } catch (err) {
+      console.info('[NavChip] GPS not immediately granted/timed out:', err.message);
+      return false;
+    }
+  })();
+
+  // Render IP result as soon as it arrives
+  const ipResult = await ipPromise;
+  if (ipResult && !gpsResolved) {
+    await fetchAndRender(ipResult.lat, ipResult.lon, ipResult.city);
+  }
+
+  // Await GPS refinement
+  const gpsSucceeded = await gpsPromise;
+  if (!gpsSucceeded && !ipResult) {
+    spinner.style.display = 'none';
+    ready.style.display = 'flex';
+    iconEl.textContent = '📍';
+    tempEl.textContent = '';
+    cityEl.textContent = 'Allow Location';
+    if (chip) {
+      chip.style.cursor = 'pointer';
+      chip.onclick = async () => {
+        iconEl.textContent = '⏳'; cityEl.textContent = 'Detecting…';
         try {
-          const r = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10`, { headers:{'User-Agent':'WeatherGPT/1.0'} });
-          if (r.ok) { const a=(await r.json()).address||{}; cityName=a.city||a.town||a.village||'My Location'; }
-        } catch(_) {}
-        chip.onclick = null; chip.style.cursor = 'default';
-        await fetchAndRender(lat, lon, cityName);
-      } catch(e) { iconEl.textContent='🚫'; cityEl.textContent='Blocked'; tempEl.textContent=''; }
-    };
+          const pos = await new Promise((res, rej) =>
+            navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: false, timeout: 10000 })
+          );
+          const lat = pos.coords.latitude, lon = pos.coords.longitude;
+          const city = await reverseGeocode(lat, lon);
+          await fetchAndRender(lat, lon, city);
+        } catch (_) {
+          iconEl.textContent = '🚫'; cityEl.textContent = 'Blocked';
+        }
+      };
+    }
   }
 }
 

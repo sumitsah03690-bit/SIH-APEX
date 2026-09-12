@@ -942,11 +942,11 @@ async function renderChipWithLocation(lat, lon, cityLabel) {
 
 async function initHeaderWeatherChip() {
   const hwcSpinner = document.getElementById('hwcSpinner');
-  const hwcContent = document.getElementById('hwcContent');
+  const hwcReady   = document.getElementById('hwcReady');
 
-  // Check if we already have cached GPS coords from this session
+  // Check if we already have cached location from this session
   const cached = sessionStorage.getItem('wgpt_location');
-  let lat, lon, cityLabel;
+  let cachedLat, cachedLon, cachedCity;
 
   if (cached) {
     try {
@@ -954,83 +954,122 @@ async function initHeaderWeatherChip() {
       // Invalidate old hardcoded New Delhi fallback if present
       if (c.city === 'New Delhi' && Math.abs(c.lat - 28.6139) < 0.01) {
         sessionStorage.removeItem('wgpt_location');
-      } else {
-        lat = c.lat; lon = c.lon; cityLabel = c.city;
+      } else if (c.lat && c.lon) {
+        cachedLat = c.lat; cachedLon = c.lon; cachedCity = c.city;
       }
     } catch(_) {}
   }
 
-  if (lat && lon) {
-    // Use cached coords directly
-    await renderChipWithLocation(lat, lon, cityLabel || 'My Location');
+  if (cachedLat && cachedLon) {
+    await renderChipWithLocation(cachedLat, cachedLon, cachedCity || 'My Location');
     return;
   }
 
-  // Try GPS
-  if (navigator.geolocation) {
+  // Helper: Attempt IP Geolocation as immediate regional fallback (typically resolves in 150-300ms)
+  async function detectIpLocation() {
     try {
-      const pos = await new Promise((res, rej) =>
-        navigator.geolocation.getCurrentPosition(res, rej, { timeout: 6000, maximumAge: 60000 })
-      );
-      lat = pos.coords.latitude;
-      lon = pos.coords.longitude;
-      cityLabel = 'My Location';
-
-      // Reverse geocode
-      try {
-        const nomRes = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=en&zoom=10`,
-          { headers: { 'User-Agent': 'WeatherGPT/1.0' }, signal: AbortSignal.timeout(4000) }
-        );
-        if (nomRes.ok) {
-          const addr = (await nomRes.json()).address || {};
-          cityLabel = addr.city || addr.town || addr.village || addr.state_district || 'My Location';
-        }
-      } catch(_) {}
-
-      // Cache for this session
-      sessionStorage.setItem('wgpt_location', JSON.stringify({ lat, lon, city: cityLabel }));
-      await renderChipWithLocation(lat, lon, cityLabel);
-      return;
-
-    } catch (geoErr) {
-      console.info('[WeatherChip] GPS denied or unavailable:', geoErr.message);
-    }
+      const res = await fetch('https://ipinfo.io/json', { signal: AbortSignal.timeout(3500) });
+      if (!res.ok) return null;
+      const data = await res.json();
+      if (data.loc) {
+        const [ipLat, ipLon] = data.loc.split(',').map(Number);
+        const city = data.city || data.region || 'My Region';
+        return { lat: ipLat, lon: ipLon, city };
+      }
+    } catch (_) {}
+    return null;
   }
 
-  // GPS unavailable / denied — show clickable "Allow Location" button, NOT fake Delhi data
-  if (hwcSpinner) hwcSpinner.style.display = 'none';
-  if (hwcContent) {
-    hwcContent.innerHTML = `
-      <span style="font-size:1rem">📍</span>
-      <span style="font-size:0.7rem;opacity:0.7">Allow Location</span>
-    `;
-    hwcContent.style.cursor = 'pointer';
-    hwcContent.title = 'Click to share your location for live weather';
-    hwcContent.onclick = async () => {
-      hwcContent.innerHTML = `<span style="font-size:0.7rem;opacity:0.6">Detecting…</span>`;
-      try {
-        const pos = await new Promise((res, rej) =>
-          navigator.geolocation.getCurrentPosition(res, rej, { timeout: 10000 })
-        );
-        lat = pos.coords.latitude;
-        lon = pos.coords.longitude;
-        cityLabel = 'My Location';
-        try {
-          const r = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=en&zoom=10`, { headers:{'User-Agent':'WeatherGPT/1.0'} });
-          if (r.ok) {
-            const a = (await r.json()).address || {};
-            cityLabel = a.city || a.town || a.village || a.state_district || 'My Location';
-          }
-        } catch(_) {}
-        sessionStorage.setItem('wgpt_location', JSON.stringify({ lat, lon, city: cityLabel }));
-        hwcContent.onclick = null;
-        hwcContent.style.cursor = 'default';
-        await renderChipWithLocation(lat, lon, cityLabel);
-      } catch(e) {
-        hwcContent.innerHTML = `<span style="font-size:0.7rem;opacity:0.5">Location blocked</span>`;
+  // Helper: Request GPS coordinates with generous timeout and laptop-friendly accuracy
+  function getBrowserGps(timeoutMs = 12000) {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) return reject(new Error('Geolocation not supported'));
+      navigator.geolocation.getCurrentPosition(
+        resolve,
+        reject,
+        {
+          enableHighAccuracy: false, // Avoids hanging on Macs/PCs without dedicated GPS chips
+          timeout: timeoutMs,
+          maximumAge: 60000
+        }
+      );
+    });
+  }
+
+  // Helper: Reverse-geocode coordinates to human-readable city/locality name
+  async function reverseGeocode(lat, lon) {
+    try {
+      const nomRes = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=en&zoom=14`,
+        { headers: { 'User-Agent': 'WeatherGPT/1.0' }, signal: AbortSignal.timeout(4000) }
+      );
+      if (nomRes.ok) {
+        const addr = (await nomRes.json()).address || {};
+        return addr.suburb || addr.neighbourhood || addr.city || addr.town || addr.village || addr.state_district || addr.county || 'My Location';
       }
-    };
+    } catch (_) {}
+    return 'My Location';
+  }
+
+  // Watch for permission changes (e.g. user clicks "Allow" in browser prompt after page load)
+  if (navigator.permissions && navigator.permissions.query) {
+    navigator.permissions.query({ name: 'geolocation' }).then(status => {
+      status.onchange = async () => {
+        if (status.state === 'granted') {
+          try {
+            const pos = await getBrowserGps(10000);
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+            const city = await reverseGeocode(lat, lon);
+            sessionStorage.setItem('wgpt_location', JSON.stringify({ lat, lon, city }));
+            await renderChipWithLocation(lat, lon, city);
+          } catch (_) {}
+        }
+      };
+    }).catch(() => {});
+  }
+
+  // STEP 1: Concurrently start IP detection so the user gets live regional weather almost immediately
+  const ipPromise = detectIpLocation();
+
+  // STEP 2: Start GPS acquisition in parallel
+  let gpsResolved = false;
+  const gpsPromise = (async () => {
+    try {
+      const pos = await getBrowserGps(12000);
+      gpsResolved = true;
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
+      const city = await reverseGeocode(lat, lon);
+      sessionStorage.setItem('wgpt_location', JSON.stringify({ lat, lon, city }));
+      await renderChipWithLocation(lat, lon, city);
+      return true;
+    } catch (err) {
+      console.info('[WeatherChip] GPS not immediately granted/timed out:', err.message);
+      return false;
+    }
+  })();
+
+  // Wait for either GPS or IP (IP typically resolves first in ~200ms)
+  const ipResult = await ipPromise;
+  if (ipResult && !gpsResolved) {
+    // Render IP regional weather right away!
+    await renderChipWithLocation(ipResult.lat, ipResult.lon, ipResult.city);
+    sessionStorage.setItem('wgpt_location', JSON.stringify(ipResult));
+  }
+
+  // Wait for GPS in background — if it succeeds, it will seamlessly upgrade the chip to high-precision locality!
+  const gpsSucceeded = await gpsPromise;
+  if (!gpsSucceeded && !ipResult) {
+    // Both failed (completely offline or blocked): Show graceful status on chip
+    if (hwcSpinner) hwcSpinner.style.display = 'none';
+    if (hwcReady) {
+      hwcReady.style.display = 'block';
+      if (hwcCityName) hwcCityName.textContent = '📍 Tap to Locate';
+      if (hwcBigTemp)  hwcBigTemp.textContent = '—°';
+      if (hwcCondText) hwcCondText.textContent = 'Tap to retry';
+      if (hwcHLText)   hwcHLText.textContent = 'GPS required';
+    }
   }
 }
 
