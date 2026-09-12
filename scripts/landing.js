@@ -401,7 +401,7 @@ async function initNavLiveChip() {
       const data = await res.json();
       if (data.loc) {
         const [ipLat, ipLon] = data.loc.split(',').map(Number);
-        const city = data.city || data.region || 'My Region';
+        const city = data.city || data.region || 'My Location';
         return { lat: ipLat, lon: ipLon, city };
       }
     } catch (_) {}
@@ -412,12 +412,12 @@ async function initNavLiveChip() {
   async function reverseGeocode(lat, lon) {
     try {
       const nomRes = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=en&zoom=14`,
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=en&zoom=12`,
         { headers: { 'User-Agent': 'WeatherGPT/1.0' }, signal: AbortSignal.timeout(4000) }
       );
       if (nomRes.ok) {
         const addr = (await nomRes.json()).address || {};
-        return addr.suburb || addr.neighbourhood || addr.city || addr.town || addr.village || addr.state_district || addr.county || 'My Location';
+        return addr.city || addr.town || addr.municipality || addr.village || addr.suburb || addr.state_district || addr.county || 'My Location';
       }
     } catch (_) {}
     return 'My Location';

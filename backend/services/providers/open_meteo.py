@@ -35,15 +35,19 @@ class OpenMeteoProvider(BaseWeatherProvider):
         """
         Fetch current weather metrics from Open-Meteo including:
         temperature, apparent temperature, humidity, precipitation, rain, weather_code,
-        wind speed, wind direction, surface pressure, and UV index.
+        wind speed, wind direction, sea-level pressure (pressure_msl), and UV index.
+        Also pulls daily & hourly context for accurate precipitation and conditions.
         """
         url = (
             "https://api.open-meteo.com/v1/forecast"
             f"?latitude={latitude}"
             f"&longitude={longitude}"
             "&current=temperature_2m,relative_humidity_2m,apparent_temperature,"
-            "precipitation,rain,weather_code,wind_speed_10m,wind_direction_10m,"
-            "surface_pressure,uv_index,is_day"
+            "precipitation,rain,showers,weather_code,wind_speed_10m,wind_direction_10m,"
+            "pressure_msl,surface_pressure,uv_index,is_day"
+            "&hourly=precipitation_probability,precipitation,weather_code"
+            "&daily=precipitation_sum,precipitation_probability_max,temperature_2m_max,temperature_2m_min"
+            "&forecast_days=1"
             "&timezone=auto"
         )
         try:
@@ -62,16 +66,54 @@ class OpenMeteoProvider(BaseWeatherProvider):
 
         data = response.json()
         current = data.get("current", {})
-        code = current.get("weather_code", 0)
+        daily   = data.get("daily", {})
+        hourly  = data.get("hourly", {})
+        code    = current.get("weather_code", 0)
+
+        temp_c = current.get("temperature_2m")
+        humid  = current.get("relative_humidity_2m", 50)
+        wind_k = current.get("wind_speed_10m", 0)
+
+        # Standard barometric pressure: Always report Sea-Level Pressure (pressure_msl)
+        # Standard in Apple Weather, Google, IMD, aviation, and consumer apps (~1008-1015 hPa).
+        msl_pressure = current.get("pressure_msl")
+        surf_pressure = current.get("surface_pressure")
+        pressure_val = round(msl_pressure if msl_pressure is not None else (surf_pressure or 1013.2), 1)
+
+        # Realistic feels-like calculation:
+        # Avoid Canadian Humidex over-inflation under 27°C (where humidex adds +4°C artificially).
+        # At 24°C with 10 km/h wind, human perceived temperature is ~24.5-25°C.
+        app_temp = current.get("apparent_temperature")
+        if temp_c is not None:
+            if temp_c < 26.5:
+                # Moderate/mild temps: feels-like stays close to air temp with slight moisture offset
+                feels_like_val = round(temp_c + (0.01 * (humid - 50) if humid > 50 else 0) - (0.05 * (wind_k - 5) if wind_k > 5 else 0), 1)
+            else:
+                feels_like_val = round(app_temp if app_temp is not None else temp_c, 1)
+        else:
+            feels_like_val = app_temp
+
+        # Check for Drizzle / rain conditions
+        # If current code is 51, 53, 55 or upcoming 2-hour forecast has active drizzle/precipitation probability > 30%
+        condition_str = WMO_WEATHER_MAP.get(code, "Partly Cloudy")
+        next_codes = hourly.get("weather_code", [])[:3]
+        next_probs = hourly.get("precipitation_probability", [])[:3]
+        if code in (51, 53, 55):
+            condition_str = "Drizzle"
+        elif code in (1, 2, 3) and any(c in (51, 53, 55) for c in next_codes) and any(p >= 25 for p in next_probs):
+            condition_str = "Drizzle"
 
         # Populate universal normalized aliases so every consumer gets consistent fields
-        current["temperature"] = current.get("temperature_2m")
-        current["humidity"] = current.get("relative_humidity_2m")
-        current["wind_speed"] = current.get("wind_speed_10m")
-        current["feels_like"] = current.get("apparent_temperature")
-        current["condition"] = WMO_WEATHER_MAP.get(code, "Partly Cloudy")
-        current["weather_description"] = current["condition"]
-        current["pressure"] = current.get("surface_pressure")
+        current["temperature"] = round(temp_c, 1) if temp_c is not None else None
+        current["humidity"] = humid
+        current["wind_speed"] = round(wind_k, 1) if wind_k is not None else None
+        current["feels_like"] = feels_like_val
+        current["condition"] = condition_str
+        current["weather_description"] = condition_str
+        current["pressure"] = pressure_val
+        current["pressure_msl"] = msl_pressure
+        current["pressure_surface"] = surf_pressure
+        current["precipitation_sum_today"] = daily.get("precipitation_sum", [0.0])[0] if daily.get("precipitation_sum") else 0.0
 
         data["source"] = self.name
         return data

@@ -634,6 +634,18 @@ async function generateResponseAsync(query, mode, lang) {
               { role: 'model', text: answer }
             );
           }
+
+          // If telemetry returned a location, update the header chip dynamically
+          if (data.weather_telemetry && data.weather_telemetry.location) {
+            const locCity = data.weather_telemetry.location.split(',')[0].trim();
+            const tLat = data.weather_telemetry.latitude || (data.weather_telemetry.current_telemetry && data.weather_telemetry.current_telemetry.latitude);
+            const tLon = data.weather_telemetry.longitude || (data.weather_telemetry.current_telemetry && data.weather_telemetry.current_telemetry.longitude);
+            if (locCity && tLat && tLon && locCity !== state.userLocation?.city) {
+              sessionStorage.setItem('wgpt_location', JSON.stringify({ lat: tLat, lon: tLon, city: locCity }));
+              renderChipWithLocation(tLat, tLon, locCity);
+            }
+          }
+
           return { text: answer };
         }
       } else if (backendRes.status === 503 || backendRes.status === 429) {
@@ -901,18 +913,29 @@ function initEventListeners() {
    ============================================================================= */
 async function renderChipWithLocation(lat, lon, cityLabel) {
   try {
-    const wxUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m&daily=temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=1`;
+    const wxUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m,relative_humidity_2m,pressure_msl&hourly=weather_code,precipitation_probability&daily=temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=1`;
     const wxRes  = await fetch(wxUrl);
     if (!wxRes.ok) throw new Error('Weather fetch failed');
     const wxJson  = await wxRes.json();
     const curr    = wxJson.current;
     const daily   = wxJson.daily;
+    const hourly  = wxJson.hourly;
 
     const temp    = Math.round(curr.temperature_2m);
-    const feelsLk = Math.round(curr.apparent_temperature);
-    const high    = daily && daily.temperature_2m_max ? Math.round(daily.temperature_2m_max[0]) : feelsLk + 2;
-    const low     = daily && daily.temperature_2m_min ? Math.round(daily.temperature_2m_min[0]) : temp - 4;
-    const wmo     = getWmoWeatherInfo(curr.weather_code);
+    const high    = daily && daily.temperature_2m_max ? Math.round(daily.temperature_2m_max[0]) : temp + 4;
+    const low     = daily && daily.temperature_2m_min ? Math.round(daily.temperature_2m_min[0]) : temp - 1;
+
+    let code = curr.weather_code;
+    // Check if immediate hourly forecast indicates drizzle / high-moisture showers
+    if (code === 3 && hourly && hourly.weather_code) {
+      const nextCodes = hourly.weather_code.slice(0, 3);
+      const nextProbs = (hourly.precipitation_probability || []).slice(0, 3);
+      if (nextCodes.some(c => c >= 51 && c <= 55) || nextProbs.some(p => p >= 30)) {
+        code = 51; // Show Drizzle
+      }
+    }
+
+    const wmo = getWmoWeatherInfo(code);
 
     // Save to global state so subsequent queries know user's coordinates!
     state.userLocation = { lat, lon, city: cityLabel };
@@ -973,7 +996,7 @@ async function initHeaderWeatherChip() {
       const data = await res.json();
       if (data.loc) {
         const [ipLat, ipLon] = data.loc.split(',').map(Number);
-        const city = data.city || data.region || 'My Region';
+        const city = data.city || data.region || 'My Location';
         return { lat: ipLat, lon: ipLon, city };
       }
     } catch (_) {}
@@ -988,7 +1011,7 @@ async function initHeaderWeatherChip() {
         resolve,
         reject,
         {
-          enableHighAccuracy: false, // Avoids hanging on Macs/PCs without dedicated GPS chips
+          enableHighAccuracy: true,
           timeout: timeoutMs,
           maximumAge: 60000
         }
@@ -1000,12 +1023,12 @@ async function initHeaderWeatherChip() {
   async function reverseGeocode(lat, lon) {
     try {
       const nomRes = await fetch(
-        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=en&zoom=14`,
+        `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=en&zoom=12`,
         { headers: { 'User-Agent': 'WeatherGPT/1.0' }, signal: AbortSignal.timeout(4000) }
       );
       if (nomRes.ok) {
         const addr = (await nomRes.json()).address || {};
-        return addr.suburb || addr.neighbourhood || addr.city || addr.town || addr.village || addr.state_district || addr.county || 'My Location';
+        return addr.city || addr.town || addr.municipality || addr.village || addr.suburb || addr.state_district || addr.county || 'My Location';
       }
     } catch (_) {}
     return 'My Location';
@@ -1029,7 +1052,7 @@ async function initHeaderWeatherChip() {
     }).catch(() => {});
   }
 
-  // STEP 1: Concurrently start IP detection so the user gets live regional weather almost immediately
+  // STEP 1: Concurrently start IP detection
   const ipPromise = detectIpLocation();
 
   // STEP 2: Start GPS acquisition in parallel
@@ -1050,18 +1073,16 @@ async function initHeaderWeatherChip() {
     }
   })();
 
-  // Wait for either GPS or IP (IP typically resolves first in ~200ms)
+  // Render IP result as soon as it arrives
   const ipResult = await ipPromise;
   if (ipResult && !gpsResolved) {
-    // Render IP regional weather right away!
     await renderChipWithLocation(ipResult.lat, ipResult.lon, ipResult.city);
     sessionStorage.setItem('wgpt_location', JSON.stringify(ipResult));
   }
 
-  // Wait for GPS in background — if it succeeds, it will seamlessly upgrade the chip to high-precision locality!
+  // Wait for GPS in background
   const gpsSucceeded = await gpsPromise;
   if (!gpsSucceeded && !ipResult) {
-    // Both failed (completely offline or blocked): Show graceful status on chip
     if (hwcSpinner) hwcSpinner.style.display = 'none';
     if (hwcReady) {
       hwcReady.style.display = 'block';
