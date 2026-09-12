@@ -382,7 +382,12 @@ async function initNavLiveChip() {
     const cached = sessionStorage.getItem('wgpt_location');
     if (cached) {
       const c = JSON.parse(cached);
-      if (c.lat && c.lon) { await fetchAndRender(c.lat, c.lon, c.city || 'My Location'); return; }
+      if (c.city === 'New Delhi' && Math.abs(c.lat - 28.6139) < 0.01) {
+        sessionStorage.removeItem('wgpt_location');
+      } else if (c.lat && c.lon) {
+        await fetchAndRender(c.lat, c.lon, c.city || 'My Location');
+        return;
+      }
     }
   } catch(_) {}
 

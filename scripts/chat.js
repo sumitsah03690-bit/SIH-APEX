@@ -951,7 +951,12 @@ async function initHeaderWeatherChip() {
   if (cached) {
     try {
       const c = JSON.parse(cached);
-      lat = c.lat; lon = c.lon; cityLabel = c.city;
+      // Invalidate old hardcoded New Delhi fallback if present
+      if (c.city === 'New Delhi' && Math.abs(c.lat - 28.6139) < 0.01) {
+        sessionStorage.removeItem('wgpt_location');
+      } else {
+        lat = c.lat; lon = c.lon; cityLabel = c.city;
+      }
     } catch(_) {}
   }
 
