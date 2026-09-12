@@ -21,11 +21,10 @@ from typing import Dict, Any, Optional, List
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")  # Set via .env file — never hardcode secrets!
 GEMINI_MODELS = [
-    "gemini-2.5-flash",        # Best — Gemini 2.5 Flash (primary)
-    "gemini-2.5-flash-lite",   # Lighter 2.5 variant
-    "gemini-2.0-flash",        # Fallback — Gemini 2.0 Flash
-    "gemini-2.0-flash-lite",   # Fallback lite
-    "gemini-1.5-flash",        # Last resort — Gemini 1.5 Flash
+    "gemini-flash-latest",           # Primary — verified active 200 OK
+    "gemini-flash-lite-latest",      # Secondary — verified active 200 OK
+    "gemini-3.1-flash-lite-preview", # Fast lightweight preview
+    "gemini-2.5-flash",              # Standard fallback
 ]
 GEMINI_ENDPOINT_TEMPLATE = "https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
