@@ -29,7 +29,11 @@ services:
     ports:
       - "3000:80"
     volumes:
-      - ./:/usr/share/nginx/html:ro
+      - ./index.html:/usr/share/nginx/html/index.html:ro
+      - ./chat.html:/usr/share/nginx/html/chat.html:ro
+      - ./styles:/usr/share/nginx/html/styles:ro
+      - ./scripts:/usr/share/nginx/html/scripts:ro
+      - ./sources:/usr/share/nginx/html/sources:ro
     depends_on:
       - backend
     networks:

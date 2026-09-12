@@ -299,6 +299,11 @@ def understand_query(message: str) -> str:
             "weather_variable": None,
             "requires_location": False,
         })
+    if not client:
+        raise HTTPException(
+            status_code=503,
+            detail="OpenAI client not configured. Please set OPENAI_API_KEY in backend/.env to enable the /ask pipeline."
+        )
     try:
         response = client.responses.create(
             model=MODEL_NAME,
@@ -400,6 +405,11 @@ def understand_query(message: str) -> str:
         )
 
 def get_final_answer(message: str, weather_data: dict):
+    if not client:
+        raise HTTPException(
+            status_code=503,
+            detail="OpenAI client not configured. Please set OPENAI_API_KEY in backend/.env to enable the /ask pipeline."
+        )
     try:
         response = client.responses.create(
             model=MODEL_NAME,
