@@ -342,6 +342,142 @@ window.addEventListener('DOMContentLoaded', () => {
 
 
 /* =============================================================================
+   LIVE NAV CHIP — Fetches user's real GPS location weather from Open-Meteo
+   Nominatim reverse-geocodes the city name (no API key needed)
+   ============================================================================= */
+const WMO_MAP = {
+  0:'☀️', 1:'🌤', 2:'⛅', 3:'☁️', 45:'🌫️', 48:'🌫️',
+  51:'🌦️', 53:'🌦️', 55:'🌦️', 61:'🌧️', 63:'🌧️', 65:'🌧️',
+  71:'❄️', 73:'❄️', 75:'❄️', 80:'🌧️', 81:'🌧️', 82:'🌧️',
+  95:'⛈️', 96:'⛈️', 99:'⛈️'
+};
+
+async function initNavLiveChip() {
+  const spinner = document.getElementById('navChipSpinner');
+  const ready   = document.getElementById('navChipReady');
+  const iconEl  = document.getElementById('navChipIcon');
+  const tempEl  = document.getElementById('navChipTemp');
+  const cityEl  = document.getElementById('navChipCity');
+  if (!spinner || !ready) return;
+
+  let lat = 28.6139, lon = 77.2090, cityName = 'New Delhi';
+
+  // Try GPS
+  if (navigator.geolocation) {
+    try {
+      const pos = await new Promise((res, rej) =>
+        navigator.geolocation.getCurrentPosition(res, rej, { timeout: 6000, maximumAge: 300000 })
+      );
+      lat = pos.coords.latitude;
+      lon = pos.coords.longitude;
+      cityName = 'My Location';
+
+      // Reverse geocode city name
+      try {
+        const nomRes = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10`,
+          { headers: { 'User-Agent': 'WeatherGPT/1.0' }, signal: AbortSignal.timeout(4000) }
+        );
+        if (nomRes.ok) {
+          const nom = await nomRes.json();
+          const a = nom.address || {};
+          cityName = a.city || a.town || a.village || a.county || 'My Location';
+        }
+      } catch(_) {}
+    } catch(e) {
+      console.info('[NavChip] GPS unavailable, using default Delhi coords.');
+    }
+  }
+
+  // Fetch real weather
+  try {
+    const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&timezone=auto`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('failed');
+    const d = await res.json();
+    const temp = Math.round(d.current.temperature_2m);
+    const icon = WMO_MAP[d.current.weather_code] || '⛅';
+
+    iconEl.textContent = icon;
+    tempEl.textContent = `${temp}°`;
+    cityEl.textContent = cityName;
+    spinner.style.display = 'none';
+    ready.style.display   = 'flex';
+  } catch(e) {
+    spinner.style.display = 'none'; // hide silently if fetch fails
+  }
+}
+
+
+/* =============================================================================
+   LIVE TICKER — Fetches real weather for all 8 ticker cities from Open-Meteo
+   Replaces hardcoded HTML with actual current temperatures + conditions
+   ============================================================================= */
+const TICKER_CITIES = [
+  { name:'NEW DELHI',   lat:28.6139, lon:77.2090 },
+  { name:'MUMBAI',      lat:19.0760, lon:72.8777 },
+  { name:'BENGALURU',   lat:12.9716, lon:77.5946 },
+  { name:'KOLKATA',     lat:22.5726, lon:88.3639 },
+  { name:'CHENNAI',     lat:13.0827, lon:80.2707 },
+  { name:'HYDERABAD',   lat:17.3850, lon:78.4867 },
+  { name:'SHIMLA',      lat:31.1048, lon:77.1734 },
+  { name:'SHILLONG',    lat:25.5788, lon:91.8933 },
+];
+
+const WMO_DESC = {
+  0:'Clear ☀️', 1:'Clear 🌤', 2:'Partly Cloudy ⛅', 3:'Overcast ☁️',
+  45:'Fog 🌫️', 48:'Fog 🌫️',
+  51:'Drizzle 🌦️', 53:'Drizzle 🌦️', 55:'Drizzle 🌦️',
+  61:'Rain 🌧️', 63:'Rain 🌧️', 65:'Rain 🌧️',
+  71:'Snow ❄️', 75:'Snow ❄️',
+  80:'Showers 🌧️', 81:'Showers 🌧️', 82:'Showers 🌧️',
+  95:'Storm ⛈️', 96:'Storm ⛈️', 99:'Storm ⛈️',
+};
+
+async function refreshLiveTicker() {
+  const lwmContents = document.querySelectorAll('.lwm-content');
+  if (!lwmContents.length) return;
+
+  try {
+    // Batch fetch all cities in parallel
+    const results = await Promise.all(TICKER_CITIES.map(async city => {
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${city.lat}&longitude=${city.lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&timezone=auto`;
+      const res = await fetch(url);
+      if (!res.ok) return null;
+      const d = await res.json();
+      const c = d.current;
+      return {
+        name: city.name,
+        temp: Math.round(c.temperature_2m),
+        hum:  Math.round(c.relative_humidity_2m),
+        wind: Math.round(c.wind_speed_10m),
+        desc: WMO_DESC[c.weather_code] || 'Partly Cloudy ⛅',
+      };
+    }));
+
+    // Build new ticker HTML
+    const html = results.filter(Boolean).map(r =>
+      `<span class="lwm-item"><strong>${r.name}</strong> <span class="lwm-temp">${r.temp}°C</span> ${r.desc} · ${r.hum}% Hum · ${r.wind} km/h</span><span class="lwm-sep">&bull;</span>`
+    ).join('');
+
+    // Update both ticker copies (original + aria-hidden duplicate for infinite scroll)
+    lwmContents.forEach(el => { el.innerHTML = html; });
+
+    console.info('[LiveTicker] Updated with real Open-Meteo data.');
+  } catch(e) {
+    console.warn('[LiveTicker] Failed to refresh:', e.message);
+  }
+}
+
+
+// Boot both on DOMContentLoaded
+window.addEventListener('DOMContentLoaded', () => {
+  initNavLiveChip();
+  setTimeout(refreshLiveTicker, 800); // slight delay so page renders first
+});
+
+
+/* =============================================================================
    6. BACKGROUND VIDEO — Quality & Fallback Handling
    =============================================================================
    The <video> element handles loading automatically.

@@ -129,6 +129,17 @@
     </div>
 
     <div class="nav-right">
+      <!-- Live GPS Weather Chip — fetches real location weather on page load -->
+      <div class="nav-live-chip" id="navLiveChip" title="Your current location weather">
+        <span class="nav-chip-spinner" id="navChipSpinner">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="animation:spin 1s linear infinite"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
+        </span>
+        <span class="nav-chip-ready" id="navChipReady" style="display:none">
+          <span id="navChipIcon">⛅</span>
+          <span id="navChipTemp">--°</span>
+          <span class="nav-chip-city" id="navChipCity">My Location</span>
+        </span>
+      </div>
       <a href="https://github.com/sumitsah03690-bit/SIH-APEX" class="nav-link" id="navGithub" target="_blank" rel="noopener">GitHub</a>
       <a href="chat.html" class="nav-link nav-cta" id="navChat">Launch Chat</a>
     </div>
