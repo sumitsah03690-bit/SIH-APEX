@@ -358,53 +358,83 @@ async function initNavLiveChip() {
   const iconEl  = document.getElementById('navChipIcon');
   const tempEl  = document.getElementById('navChipTemp');
   const cityEl  = document.getElementById('navChipCity');
+  const chip    = document.getElementById('navLiveChip');
   if (!spinner || !ready) return;
 
-  let lat = 28.6139, lon = 77.2090, cityName = 'New Delhi';
-
-  // Try GPS
-  if (navigator.geolocation) {
-    try {
-      const pos = await new Promise((res, rej) =>
-        navigator.geolocation.getCurrentPosition(res, rej, { timeout: 6000, maximumAge: 300000 })
-      );
-      lat = pos.coords.latitude;
-      lon = pos.coords.longitude;
-      cityName = 'My Location';
-
-      // Reverse geocode city name
-      try {
-        const nomRes = await fetch(
-          `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10`,
-          { headers: { 'User-Agent': 'WeatherGPT/1.0' }, signal: AbortSignal.timeout(4000) }
-        );
-        if (nomRes.ok) {
-          const nom = await nomRes.json();
-          const a = nom.address || {};
-          cityName = a.city || a.town || a.village || a.county || 'My Location';
-        }
-      } catch(_) {}
-    } catch(e) {
-      console.info('[NavChip] GPS unavailable, using default Delhi coords.');
-    }
-  }
-
-  // Fetch real weather
-  try {
+  async function fetchAndRender(lat, lon, cityName) {
     const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,weather_code&timezone=auto`;
     const res = await fetch(url);
-    if (!res.ok) throw new Error('failed');
+    if (!res.ok) throw new Error('fetch failed');
     const d = await res.json();
     const temp = Math.round(d.current.temperature_2m);
     const icon = WMO_MAP[d.current.weather_code] || '⛅';
-
     iconEl.textContent = icon;
     tempEl.textContent = `${temp}°`;
     cityEl.textContent = cityName;
     spinner.style.display = 'none';
     ready.style.display   = 'flex';
-  } catch(e) {
-    spinner.style.display = 'none'; // hide silently if fetch fails
+    // Store in session so chat page can reuse
+    sessionStorage.setItem('wgpt_location', JSON.stringify({ lat, lon, city: cityName }));
+  }
+
+  // Check session cache first
+  try {
+    const cached = sessionStorage.getItem('wgpt_location');
+    if (cached) {
+      const c = JSON.parse(cached);
+      if (c.lat && c.lon) { await fetchAndRender(c.lat, c.lon, c.city || 'My Location'); return; }
+    }
+  } catch(_) {}
+
+  // Try GPS
+  if (navigator.geolocation) {
+    try {
+      const pos = await new Promise((res, rej) =>
+        navigator.geolocation.getCurrentPosition(res, rej, { timeout: 6000, maximumAge: 60000 })
+      );
+      const lat = pos.coords.latitude;
+      const lon = pos.coords.longitude;
+      let cityName = 'My Location';
+      try {
+        const r = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10`,
+          { headers: { 'User-Agent': 'WeatherGPT/1.0' }, signal: AbortSignal.timeout(4000) }
+        );
+        if (r.ok) {
+          const a = (await r.json()).address || {};
+          cityName = a.city || a.town || a.village || a.county || 'My Location';
+        }
+      } catch(_) {}
+      await fetchAndRender(lat, lon, cityName);
+      return;
+    } catch(e) {
+      console.info('[NavChip] GPS denied:', e.message);
+    }
+  }
+
+  // GPS denied — show "Allow Location" button instead of fake data
+  spinner.style.display = 'none';
+  ready.style.display = 'flex';
+  iconEl.textContent = '📍';
+  tempEl.textContent = '';
+  cityEl.textContent = 'Allow Location';
+  if (chip) {
+    chip.style.cursor = 'pointer';
+    chip.title = 'Click to share your location for live weather';
+    chip.onclick = async () => {
+      iconEl.textContent = '⏳'; cityEl.textContent = 'Detecting…'; tempEl.textContent = '';
+      try {
+        const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { timeout: 10000 }));
+        const lat = pos.coords.latitude, lon = pos.coords.longitude;
+        let cityName = 'My Location';
+        try {
+          const r = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=10`, { headers:{'User-Agent':'WeatherGPT/1.0'} });
+          if (r.ok) { const a=(await r.json()).address||{}; cityName=a.city||a.town||a.village||'My Location'; }
+        } catch(_) {}
+        chip.onclick = null; chip.style.cursor = 'default';
+        await fetchAndRender(lat, lon, cityName);
+      } catch(e) { iconEl.textContent='🚫'; cityEl.textContent='Blocked'; tempEl.textContent=''; }
+    };
   }
 }
 

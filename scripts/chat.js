@@ -941,37 +941,92 @@ async function renderChipWithLocation(lat, lon, cityLabel) {
 }
 
 async function initHeaderWeatherChip() {
-  let lat = 28.6139;
-  let lon = 77.2090;
-  let cityLabel = 'New Delhi';
+  const hwcSpinner = document.getElementById('hwcSpinner');
+  const hwcContent = document.getElementById('hwcContent');
 
+  // Check if we already have cached GPS coords from this session
+  const cached = sessionStorage.getItem('wgpt_location');
+  let lat, lon, cityLabel;
+
+  if (cached) {
+    try {
+      const c = JSON.parse(cached);
+      lat = c.lat; lon = c.lon; cityLabel = c.city;
+    } catch(_) {}
+  }
+
+  if (lat && lon) {
+    // Use cached coords directly
+    await renderChipWithLocation(lat, lon, cityLabel || 'My Location');
+    return;
+  }
+
+  // Try GPS
   if (navigator.geolocation) {
     try {
       const pos = await new Promise((res, rej) =>
-        navigator.geolocation.getCurrentPosition(res, rej, { timeout: 5000, maximumAge: 300000 })
+        navigator.geolocation.getCurrentPosition(res, rej, { timeout: 6000, maximumAge: 60000 })
       );
       lat = pos.coords.latitude;
       lon = pos.coords.longitude;
       cityLabel = 'My Location';
 
-      // Reverse geocode city name via Nominatim (free, no key required)
+      // Reverse geocode
       try {
         const nomRes = await fetch(
           `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=en&zoom=10`,
           { headers: { 'User-Agent': 'WeatherGPT/1.0' }, signal: AbortSignal.timeout(4000) }
         );
         if (nomRes.ok) {
-          const nomJson = await nomRes.json();
-          const addr = nomJson.address || {};
-          cityLabel = addr.city || addr.town || addr.village || addr.state_district || addr.county || 'My Location';
+          const addr = (await nomRes.json()).address || {};
+          cityLabel = addr.city || addr.town || addr.village || addr.state_district || 'My Location';
         }
-      } catch (_) { /* silently use fallback label */ }
+      } catch(_) {}
+
+      // Cache for this session
+      sessionStorage.setItem('wgpt_location', JSON.stringify({ lat, lon, city: cityLabel }));
+      await renderChipWithLocation(lat, lon, cityLabel);
+      return;
+
     } catch (geoErr) {
-      console.info('[WeatherChip] Browser GPS unavailable, using regional default:', geoErr.message);
+      console.info('[WeatherChip] GPS denied or unavailable:', geoErr.message);
     }
   }
 
-  await renderChipWithLocation(lat, lon, cityLabel);
+  // GPS unavailable / denied — show clickable "Allow Location" button, NOT fake Delhi data
+  if (hwcSpinner) hwcSpinner.style.display = 'none';
+  if (hwcContent) {
+    hwcContent.innerHTML = `
+      <span style="font-size:1rem">📍</span>
+      <span style="font-size:0.7rem;opacity:0.7">Allow Location</span>
+    `;
+    hwcContent.style.cursor = 'pointer';
+    hwcContent.title = 'Click to share your location for live weather';
+    hwcContent.onclick = async () => {
+      hwcContent.innerHTML = `<span style="font-size:0.7rem;opacity:0.6">Detecting…</span>`;
+      try {
+        const pos = await new Promise((res, rej) =>
+          navigator.geolocation.getCurrentPosition(res, rej, { timeout: 10000 })
+        );
+        lat = pos.coords.latitude;
+        lon = pos.coords.longitude;
+        cityLabel = 'My Location';
+        try {
+          const r = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&accept-language=en&zoom=10`, { headers:{'User-Agent':'WeatherGPT/1.0'} });
+          if (r.ok) {
+            const a = (await r.json()).address || {};
+            cityLabel = a.city || a.town || a.village || a.state_district || 'My Location';
+          }
+        } catch(_) {}
+        sessionStorage.setItem('wgpt_location', JSON.stringify({ lat, lon, city: cityLabel }));
+        hwcContent.onclick = null;
+        hwcContent.style.cursor = 'default';
+        await renderChipWithLocation(lat, lon, cityLabel);
+      } catch(e) {
+        hwcContent.innerHTML = `<span style="font-size:0.7rem;opacity:0.5">Location blocked</span>`;
+      }
+    };
+  }
 }
 
 /* =============================================================================
