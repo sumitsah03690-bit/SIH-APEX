@@ -4,7 +4,7 @@ import unittest
 from dotenv import load_dotenv
 from fastapi import HTTPException
 
-BASE_DIR = r"C:\Users\sathw\OneDrive\Desktop\WeatherGPT\backend"
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, BASE_DIR)
 load_dotenv(os.path.join(BASE_DIR, ".env"))
 
